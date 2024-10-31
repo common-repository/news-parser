@@ -1,0 +1,134 @@
+<?php
+namespace NewsParserPlugin\Api\Rest;
+
+use NewsParserPlugin\Interfaces\EventControllerInterface;
+use NewsParserPlugin\Message\Success;
+use NewsParserPlugin\Message\Errors;
+use NewsParserPlugin\Traits\SanitizeDataTrait;
+use NewsParserPlugin\Traits\ValidateDataTrait;
+use NewsParserPlugin\Exception\MyException;
+
+/**
+ * Class saves received ai options options.
+ *
+ * PHP version 5.6
+ *
+ *
+ * @package  Controller
+ * @author   Evgeniy S.Zalevskiy <2600@ukr.net>
+ * @license  MIT
+ *
+ */
+
+class AIApiEndpoint extends RestApiController
+
+{
+
+    /**
+     * Event controller.
+     *
+     * @var EventControllerInterface
+     */
+    protected $event;
+    /**
+     * Instance of this class
+     *
+     * @var AIOptionsApiController
+     */
+    protected static $instance;
+
+    /**
+     * Methods to validate input data.
+     *
+     * @method validateUrl()
+     * @method validateImageUrl()
+     * @method validateMediaOptions()
+     * @method validateExtraOptions()
+     * @method validateTemplate()
+     */
+    use ValidateDataTrait;
+    /**
+     * Methods to sanitize input data.
+     *
+     * @method sanitizeMediaOptionsArray()
+     * @method sanitizeExtraOptions()
+     * @method sanitizeTemplate()
+     */
+    use SanitizeDataTrait;
+    /**
+     * Init method
+     *
+     * @param EventControllerInterface $event Controller factory instance.
+     */
+    protected function __construct(EventControllerInterface $event)
+    {
+        $this->event = $event;
+        $this->init();
+    }
+    /**
+     * Initializes the object by registering its routes as a REST API endpoint.
+     *
+     * @return void
+     */
+    protected function init()
+    {
+        
+        add_action('rest_api_init', array($this,'register_routes'));
+
+    }
+    /**
+     * Singleton static method to get instance of class.
+     *
+     * @param EventControllerInterface $event Controller factory instance.
+     * @return AIOptionsApiController
+     */
+    public static function create(EventControllerInterface $event)
+    {
+
+        if (static::$instance) {
+            return static::$instance;
+        } else {
+            static::$instance = new static($event);
+            return static::$instance;
+        }
+    }
+
+/**
+ * Register the routes for the objects of the controller.
+ */
+    public function register_routes()
+    {
+        $version = '1';
+        $namespace = 'news-parser-plugin/v' . $version;
+        $base = 'ai/chat';
+
+        register_rest_route($namespace, '/' . $base, array(
+            array(
+                'methods' => \WP_REST_Server::CREATABLE,
+                'callback' => array($this, 'chat'),
+                'permission_callback' => array($this, 'checkPermission'),
+            )
+            ));
+    }
+/**
+ * Get AI options options.
+ *
+ * @param WP_REST_Request $request Full data about the request.
+ * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
+ */
+public function chat($request){
+
+    try{
+        $chat_params=$request->get_params();
+        $chat_responce=$this->event->trigger('ai:chat', array($chat_params['aiProvider'],$chat_params['request']));
+        $response_data=$this->formatResponse()->message('success', null)->options($chat_responce)->get('array');
+        return $this->sendResponse($response_data);
+    }catch(MyException $e){
+        $error_data=$this->formatResponse()->error($e->getCode())->message('error', $e->getMessage())->get('array');
+        $error_code=$e->getCode();
+        $error_message=$e->getMessage();
+        return $this->sendError($error_code,$error_message,$error_data);
+    }
+}
+
+}
